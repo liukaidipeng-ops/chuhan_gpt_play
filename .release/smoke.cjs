@@ -11,14 +11,12 @@ const assert = require('node:assert/strict');
     const before=await snapshot();
     const state=()=>page.evaluate(()=>__xq.pieceHoverC.state);
     async function hover(f,r) {
-      const point=()=>page.evaluate(([f,r])=>{const v=Board.pos(f,r,Board.TOP+.10).project(Core.camera);return [(v.x+1)*innerWidth/2,(1-v.y)*innerHeight/2]},[f,r]);
       for(let n=0;n<60;n++) {
-        const [x,y]=await point();
-        await page.mouse.move(x,y);
-        await page.waitForTimeout(250);
+        const [x,y]=await page.evaluate(([f,r])=>{const v=Board.pos(f,r,Board.TOP+.10).project(Core.camera);return [(v.x+1)*innerWidth/2,(1-v.y)*innerHeight/2]},[f,r]);
+        await page.mouse.move(x,y);await page.waitForTimeout(250);
         const s=await state();
         if(s.target?.f===f && s.target?.r===r && s.opacity===1) return s;
-        if(n===0 || n===59) console.log('HOVER_DIAG',JSON.stringify(await page.evaluate(([x,y])=>({x,y,top:document.elementFromPoint(x,y)?.outerHTML?.slice(0,180),pick:Board.pick(x,y),hover:__xq.pieceHoverC.state,started:__xq.started,busy:__xq.busy,hold:Core.Time.hold,cine:Core.Cam.cine,root:Board.root.visible,lobby:document.getElementById('lobby').className,modal:document.querySelector('.modal:not(.hidden)')?.id,ended:__xq.game.result,running:__xq.Ending.running,pieces:Board.pieces.size}),[x,y])));
+        if(n===59) console.log('HOVER_DIAG',JSON.stringify(await page.evaluate(([x,y])=>({x,y,top:document.elementFromPoint(x,y)?.id,pick:Board.pick(x,y),hover:__xq.pieceHoverC.state,started:__xq.started,busy:__xq.busy,hold:Core.Time.hold,cine:Core.Cam.cine,root:Board.root.visible,lobby:document.getElementById('lobby').className,modal:document.querySelector('.modal:not(.hidden)')?.id,ended:__xq.game.result,pieces:Board.pieces.size}),[x,y])));
       }
       throw Error('Hover did not activate at '+f+','+r);
     }
@@ -40,8 +38,10 @@ const assert = require('node:assert/strict');
     await hover(4,3);await page.mouse.down();await page.mouse.move(680,500,{steps:3});assert.equal((await state()).visible,false);await page.mouse.up();
     console.log('PASS drag clears');
     await page.emulateMedia({reducedMotion:'reduce'});await hover(4,3);assert.equal((await state()).opacity,1);
-    await page.evaluate(()=>{Core.Time.hold=true});await page.waitForTimeout(350);assert.equal((await state()).visible,false);await page.evaluate(()=>{Core.Time.hold=false});
-    console.log('PASS reduced motion and pause clears');
+    await page.locator('#tPause').click();await page.waitForFunction(()=>Core.Time.hold);
+    assert.equal((await state()).visible,false);
+    await page.evaluate(()=>document.getElementById('pzGo').click());await page.waitForFunction(()=>!Core.Time.hold);
+    console.log('PASS reduced motion and actual pause control clears');
     assert.deepEqual(errors,[]);console.log('PASS no browser JavaScript errors');
   } finally {await browser.close()}
 })().catch(e=>{console.error(e);process.exit(1)});
