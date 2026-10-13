@@ -1,0 +1,40 @@
+name: One-time P6 release
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/release-p6.yml]
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Build exact approved source
+        run: |
+          git clone --quiet https://github.com/liukaidipeng-ops/chuhan_gpt.git /tmp/chuhan-src
+          git -C /tmp/chuhan-src checkout --quiet 658228687811612e969a49de7b892bab17d953b8
+          npm ci --ignore-scripts --prefix /tmp/chuhan-src/source
+          node /tmp/chuhan-src/source/build.js
+      - name: Verify and stage release
+        run: |
+          test "$(node -p "require('/tmp/chuhan-src/source/dist/site/version.json').v")" = "2026.10.14-5f8e13"
+          grep -q "优化部 P6" /tmp/chuhan-src/source/dist/site/index.html
+          ! grep -q "compactLandscape" /tmp/chuhan-src/source/dist/site/index.html
+          for f in index.html version.json music-war.mp3 voice-real.bin voice-orig.bin voice-bf.bin sfx.bin; do
+            cp "/tmp/chuhan-src/source/dist/site/$f" "./$f"
+          done
+          test "$(git diff --name-only | sort | tr '\n' ' ')" = "index.html version.json "
+      - name: Commit release and remove one-time workflow
+        run: |
+          rm .github/workflows/release-p6.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "release: approved eco animation 60fps cap (source 6582286)"
+          git push
