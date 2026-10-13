@@ -12,23 +12,37 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-      - name: Build exact approved source
+      - name: Apply exact verified P6 build delta
         run: |
-          git clone --quiet https://github.com/liukaidipeng-ops/chuhan_gpt.git /tmp/chuhan-src
-          git -C /tmp/chuhan-src checkout --quiet 658228687811612e969a49de7b892bab17d953b8
-          npm ci --ignore-scripts --prefix /tmp/chuhan-src/source
-          node /tmp/chuhan-src/source/build.js
-      - name: Verify and stage release
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path('index.html')
+          s = p.read_text()
+          replacements = [
+              ("<script>window.APP_VERSION='2026.10.13-51f5aa';</script>", "<script>window.APP_VERSION='2026.10.14-5f8e13';</script>"),
+              ("  let lastDraw = 0, shT = 0;", "  let lastDraw = 0, shT = 0, nextDraw = 0;"),
+              ("      if (calm && t - lastDraw < 64) return;", """      if (calm && t - lastDraw < 64) return;
+      // 优化部 P6（Ham 优化部拍板单 p-07 选甲）：有动画时最多 60 帧。高刷屏（iPhone 120 Hz）原来跟着屏幕每秒画 96～120 帧，发烫、掉电快。
+      //   按 1/60 秒的节拍放行（nextDraw 累加，不按上一帧时间），90 Hz 屏也能平均到 60 帧；60 Hz 屏每帧都放行，不受影响
+      if (!calm && t < nextDraw - 2) return;
+      nextDraw = nextDraw + 1000 / 60 < t ? t + 1000 / 60 : nextDraw + 1000 / 60;   // 落后太多（刚从静止/后台回来）就从现在重新起拍"""),
+              ("<script>LD(0.822)</script>", "<script>LD(0.823)</script>"),
+              ("<script>LD(0.839)</script>", "<script>LD(0.840)</script>"),
+          ]
+          for old, new in replacements:
+              if s.count(old) != 1:
+                  raise SystemExit(f'unexpected occurrence count for {old[:60]!r}: {s.count(old)}')
+              s = s.replace(old, new)
+          p.write_text(s)
+          Path('version.json').write_text(json.dumps({'v': '2026.10.14-5f8e13'}, separators=(',', ':')))
+          PY
+      - name: Verify exact local-build identity
         run: |
-          test "$(node -p "require('/tmp/chuhan-src/source/dist/site/version.json').v")" = "2026.10.14-5f8e13"
-          grep -q "优化部 P6" /tmp/chuhan-src/source/dist/site/index.html
-          ! grep -q "compactLandscape" /tmp/chuhan-src/source/dist/site/index.html
-          for f in index.html version.json music-war.mp3 voice-real.bin voice-orig.bin voice-bf.bin sfx.bin; do
-            cp "/tmp/chuhan-src/source/dist/site/$f" "./$f"
-          done
+          echo "62dcbd1453d021264089d75574dabb956a866ffa193ad89451ce7ded4fa6d25d  index.html" | sha256sum -c -
+          echo "6c2c4e52b77756f03c6cedf49279f40dc160ec329597f658fa64414a113693c2  version.json" | sha256sum -c -
+          grep -q "优化部 P6" index.html
+          ! grep -q "compactLandscape" index.html
           test "$(git diff --name-only | sort | tr '\n' ' ')" = "index.html version.json "
       - name: Commit release and remove one-time workflow
         run: |
