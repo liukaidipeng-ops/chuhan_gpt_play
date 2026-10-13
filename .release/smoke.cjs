@@ -10,6 +10,7 @@ const assert = require('node:assert/strict');
     const snapshot=()=>page.evaluate(()=>JSON.stringify(__xq.game.board));
     const before=await snapshot();
     const state=()=>page.evaluate(()=>__xq.pieceHoverC.state);
+    const cleared=()=>page.waitForFunction(()=>!__xq.pieceHoverC.state.visible,null,{timeout:10000});
     async function hover(f,r) {
       for(let n=0;n<60;n++) {
         const [x,y]=await page.evaluate(([f,r])=>{const v=Board.pos(f,r,Board.TOP+.10).project(Core.camera);return [(v.x+1)*innerWidth/2,(1-v.y)*innerHeight/2]},[f,r]);
@@ -26,21 +27,21 @@ const assert = require('node:assert/strict');
     assert.equal(await page.evaluate(()=>Board.root.getObjectByName('piece-hover-c').children.length),8);
     console.log('PASS red hover, four segments, both alpha layers at 70 percent');
     await hover(4,6);console.log('PASS enemy hover');
-    await page.mouse.move(2,2);await page.waitForTimeout(350);assert.equal((await state()).visible,false);
+    await page.mouse.move(2,2);await cleared();assert.equal((await state()).visible,false);
     await hover(4,3);
     await page.evaluate(()=>document.getElementById('gl').dispatchEvent(new PointerEvent('pointermove',{pointerType:'touch',clientX:640,clientY:500,bubbles:true})));
     assert.equal((await state()).visible,false);console.log('PASS leave and touch clear');
     await hover(4,3);
     await page.evaluate(()=>{const d=document.createElement('div');d.id='hover-test-modal';d.className='modal';document.body.appendChild(d)});
-    await page.waitForTimeout(350);assert.equal((await state()).visible,false);
+    await cleared();assert.equal((await state()).visible,false);
     await page.evaluate(()=>document.getElementById('hover-test-modal').remove());
     assert.equal(await snapshot(),before);console.log('PASS modal clears and board unchanged');
     await hover(4,3);await page.mouse.down();await page.mouse.move(680,500,{steps:3});assert.equal((await state()).visible,false);await page.mouse.up();
     console.log('PASS drag clears');
     await page.emulateMedia({reducedMotion:'reduce'});await hover(4,3);assert.equal((await state()).opacity,1);
-    await page.locator('#tPause').click();await page.waitForFunction(()=>Core.Time.hold);
+    await page.locator('#tPause').click();await page.waitForFunction(()=>Core.Time.hold,null,{timeout:10000});await cleared();
     assert.equal((await state()).visible,false);
-    await page.evaluate(()=>document.getElementById('pzGo').click());await page.waitForFunction(()=>!Core.Time.hold);
+    await page.evaluate(()=>document.getElementById('pzGo').click());await page.waitForFunction(()=>!Core.Time.hold,null,{timeout:10000});
     console.log('PASS reduced motion and actual pause control clears');
     assert.deepEqual(errors,[]);console.log('PASS no browser JavaScript errors');
   } finally {await browser.close()}
