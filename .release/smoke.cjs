@@ -4,18 +4,23 @@ const assert = require('node:assert/strict');
   const browser = await chromium.launch({args:['--enable-unsafe-swiftshader','--use-angle=swiftshader']});
   try {
     const page = await browser.newPage({viewport:{width:1280,height:800}});
-    const errors=[]; page.on('pageerror', e=>errors.push(e.message));
+    const errors=[]; page.on('pageerror', e=>{errors.push(e.message);console.log('BROWSER_ERROR',e.message)});
     await page.goto('http://127.0.0.1:8765/?eco=1#local', {waitUntil:'domcontentloaded',timeout:90000});
     await page.waitForFunction(()=>window.__xq?.started && !__xq.busy && __xq.pieceHoverC, null,{timeout:90000});
-    await page.waitForTimeout(1800);
     const snapshot=()=>page.evaluate(()=>JSON.stringify(__xq.game.board));
     const before=await snapshot();
     const state=()=>page.evaluate(()=>__xq.pieceHoverC.state);
     async function hover(f,r) {
-      const [x,y]=await page.evaluate(([f,r])=>{const v=Board.pos(f,r,Board.TOP+.10).project(Core.camera);return [(v.x+1)*innerWidth/2,(1-v.y)*innerHeight/2]},[f,r]);
-      await page.mouse.move(x,y);
-      await page.waitForFunction(([f,r])=>{const s=__xq.pieceHoverC.state;return s.target?.f===f && s.target?.r===r && s.opacity===1},[f,r],{timeout:15000});
-      return state();
+      const point=()=>page.evaluate(([f,r])=>{const v=Board.pos(f,r,Board.TOP+.10).project(Core.camera);return [(v.x+1)*innerWidth/2,(1-v.y)*innerHeight/2]},[f,r]);
+      for(let n=0;n<60;n++) {
+        const [x,y]=await point();
+        await page.mouse.move(x,y);
+        await page.waitForTimeout(250);
+        const s=await state();
+        if(s.target?.f===f && s.target?.r===r && s.opacity===1) return s;
+        if(n===0 || n===59) console.log('HOVER_DIAG',JSON.stringify(await page.evaluate(([x,y])=>({x,y,top:document.elementFromPoint(x,y)?.outerHTML?.slice(0,180),pick:Board.pick(x,y),hover:__xq.pieceHoverC.state,started:__xq.started,busy:__xq.busy,hold:Core.Time.hold,cine:Core.Cam.cine,root:Board.root.visible,lobby:document.getElementById('lobby').className,modal:document.querySelector('.modal:not(.hidden)')?.id,ended:__xq.game.result,running:__xq.Ending.running,pieces:Board.pieces.size}),[x,y])));
+      }
+      throw Error('Hover did not activate at '+f+','+r);
     }
     const red=await hover(4,3);
     assert.ok(Math.abs(red.layerOpacity[0]-.434)<1e-8);
