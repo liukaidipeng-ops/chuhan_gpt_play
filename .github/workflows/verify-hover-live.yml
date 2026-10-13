@@ -1,0 +1,37 @@
+name: Verify deployed hover C
+on:
+  push:
+    branches: [codex/hover-c-final-20261013]
+    paths: [.github/workflows/verify-hover-live.yml]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Verify live Pages response against tested release
+        run: |
+          python3 - <<'PY'
+          import urllib.request,hashlib,json,time
+          base='https://liukaidipeng-ops.github.io/chuhan_gpt_play/'
+          expected='2026.10.13-hoverc-c71c93'
+          for attempt in range(18):
+            try:
+              suffix='?verify='+str(time.time_ns())
+              with urllib.request.urlopen(base+'version.json'+suffix, timeout=15) as r:
+                version=json.load(r)['v']
+              with urllib.request.urlopen(base+'index.html'+suffix, timeout=15) as r:
+                html=r.read()
+              blob=hashlib.sha1(b'blob '+str(len(html)).encode()+b'\0'+html).hexdigest()
+              assert version==expected, (version,expected)
+              assert blob=='45fb5a3933d126f96d14821feaad00e8fa008e9a', blob
+              assert html.count(b'// ---- piece-hover-c.js ----')==1
+              print('PASS live HTTP responses, version',version)
+              print('PASS deployed HTML matches browser-tested release:',blob)
+              print('LIVE_URL',base)
+              break
+            except Exception as e:
+              if attempt==17: raise
+              print('Waiting for deployment cache:',str(e));time.sleep(5)
+          PY
