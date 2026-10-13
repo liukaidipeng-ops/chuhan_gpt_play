@@ -1,0 +1,21 @@
+name: Validate hover C in Chromium
+on:
+  push:
+    branches: [codex/hover-c-final-20261013]
+    paths: [.github/workflows/validate-hover-c.yml, .release/smoke.cjs]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install browser
+        run: |
+          npm install --prefix .release --no-package-lock --ignore-scripts playwright@1.57.0
+          .release/node_modules/.bin/playwright install --with-deps chromium
+      - name: Real game interaction smoke test
+        run: |
+          python3 -m http.server 8765 >/tmp/hover-http.log 2>&1 &
+          node .release/smoke.cjs
