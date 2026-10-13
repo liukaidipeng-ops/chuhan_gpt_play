@@ -1,0 +1,53 @@
+name: Prepare approved hover C
+on:
+  push:
+    branches: [codex/hover-c-final-20261013]
+    paths: [.github/workflows/prepare-hover-c.yml, .release/piece-hover-c.js]
+permissions:
+  contents: write
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Baseline checked build and syntax validation
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib,json,re,subprocess,tempfile
+          p=Path('index.html');before=p.read_bytes()
+          h=lambda b:hashlib.sha1(b'blob '+str(len(b)).encode()+b'\0'+b).hexdigest()
+          assert h(before)=='16f6dc9dd3560efd355cca46d03477bfda1cb804', 'Baseline changed; stop rather than overwrite'
+          module=Path('.release/piece-hover-c.js');js=module.read_text()
+          subprocess.run(['node','--check',str(module)],check=True)
+          text=before.decode();assert text.count('</body>')==1
+          assert '// ---- piece-hover-c.js ----' not in text
+          version='2026.10.13-hoverc-'+hashlib.sha1(js.encode()).hexdigest()[:6]
+          text,n=re.subn(r'(window\.APP_VERSION\s*=\s*[\x27\x22])([^\x27\x22]+)',lambda m:m[1]+version,text,count=1)
+          assert n==1
+          text=text.replace('</body>','<script>// ---- piece-hover-c.js ----\n'+js+'</script>\n</body>')
+          with tempfile.TemporaryDirectory() as d:
+            for i,code in enumerate(re.findall(r'<script\b[^>]*>(.*?)</script>',text,re.S)):
+              f=Path(d)/f'{i}.js';f.write_text(code)
+              subprocess.run(['node','--check',str(f)],check=True,capture_output=True)
+          p.write_text(text);Path('version.json').write_text(json.dumps({'v':version},separators=(',',':')))
+          b=Path('source/build.js')
+          if b.exists():
+            s=b.read_text();assert "'environment', 'main'];" in s
+            b.write_text(s.replace("'environment', 'main'];", "'environment', 'main', 'piece-hover-c'];",1))
+            Path('source/src/piece-hover-c.js').write_text(js)
+            subprocess.run(['node','--check',str(b)],check=True)
+          print('VERSION',version)
+          PY
+      - name: Save generated files on preparation branch only
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html version.json
+          if test -f source/build.js; then git add source/build.js source/src/piece-hover-c.js; fi
+          git commit -m 'build: approved hover C at 70 percent preview opacity'
+          git push origin HEAD:codex/hover-c-final-20261013
+          git ls-tree HEAD index.html version.json source/build.js source/src/piece-hover-c.js
